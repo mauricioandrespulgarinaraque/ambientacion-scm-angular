@@ -1,239 +1,608 @@
 # Ambientación 2 - FastAPI + Angular + PostgreSQL
 
-A scalable template management and ticket generation system built with FastAPI backend, Angular frontend, and PostgreSQL database.
+**Gestor de Plantillas y Generador de Tickets** para recursos cloud (GCP/Azure) con backend FastAPI, frontend Angular y base de datos PostgreSQL.
 
-## Tech Stack
+## 📋 Características
 
-- **Backend**: FastAPI 0.110.1, SQLAlchemy 2.0.23, Psycopg2
-- **Frontend**: Angular 17, RxJS 7.8 (no additional UI libraries)
-- **Database**: PostgreSQL 15
-- **Styling**: Plain CSS
-- **Deployment**: Docker & Docker Compose
+- ✅ **Gestión de Plantillas**: Crear, editar, eliminar plantillas por proveedor cloud (GCP/Azure) y tipo de recurso
+- ✅ **Selección de Recursos**: Navegador de recursos cloud con vista por proveedor
+- ✅ **Generación de Tickets**: Crear tickets consolidados con contenido de plantillas
+- ✅ **Interfaz Limpia**: Angular 17 + CSS puro (sin dependencias UI externas)
+- ✅ **Persistencia**: PostgreSQL 15 con SQLAlchemy ORM
 
-## Features
+## 🛠 Stack Tecnológico
 
-- **Template Management**: Create, edit, delete templates for different cloud providers (GCP/Azure) and resource types
-- **Resource Selection**: Browse and select cloud resources from different providers
-- **Ticket Generation**: Automatically generate tickets with consolidated template content
-- **Plain CSS UI**: No external UI frameworks, minimal dependencies
+| Componente | Tecnología | Versión |
+|-----------|-----------|---------|
+| Backend | FastAPI | 0.110.1 |
+| ORM | SQLAlchemy | 2.0.23 |
+| Frontend | Angular | 17 |
+| Base de Datos | PostgreSQL | 15 |
+| Orquestación | Docker Compose | 3.9 |
+| Python | - | 3.10+ |
+| Node.js | - | 18+ |
 
-## Project Structure
+## 📁 Estructura del Proyecto
 
 ```
 ambientacion-2/
 ├── app/
-│   ├── backend/
-│   │   ├── server.py              # FastAPI app with SQLAlchemy models
-│   │   ├── requirements.txt       # Python dependencies
-│   │   ├── .env                   # Database and CORS configuration
-│   │   ├── Dockerfile            # Python 3.10 container
-│   │   └── .dockerignore          # Docker exclude patterns
-│   └── frontend/
+│   ├── backend/                   # FastAPI + SQLAlchemy
+│   │   ├── server.py              # Aplicación principal
+│   │   ├── requirements.txt       # Dependencias Python
+│   │   ├── .env                   # Configuración (BD, CORS)
+│   │   ├── Dockerfile            # Imagen Python 3.10
+│   │   └── .dockerignore         # Patrones a ignorar
+│   └── frontend/                  # Angular + Nginx
 │       ├── src/
-│       │   ├── main.ts            # Angular bootstrap
-│       │   ├── index.html         # Entry point
-│       │   ├── styles.css         # Global styles
+│       │   ├── main.ts            # Bootstrap Angular
+│       │   ├── index.html         # Punto de entrada
+│       │   ├── styles.css         # Estilos globales
 │       │   └── app/
-│       │       ├── app.config.ts  # DI configuration
-│       │       ├── app.routes.ts  # Route definitions
-│       │       ├── app.component.* # Main layout
+│       │       ├── app.component.* # Layout principal
+│       │       ├── app.config.ts  # Inyección de dependencias
+│       │       ├── app.routes.ts  # Rutas
 │       │       ├── services/
-│       │       │   └── api.service.ts # HTTP client for API calls
+│       │       │   └── api.service.ts # Cliente HTTP
 │       │       └── pages/
-│       │           ├── templates/   # Template CRUD
-│       │           ├── resources/   # Resource selection
-│       │           └── tickets/     # Ticket viewing
-│       ├── package.json           # Dependencies
-│       ├── angular.json           # CLI configuration
-│       ├── tsconfig.json          # TypeScript config
-│       ├── Dockerfile            # Multi-stage build for Nginx
-│       ├── nginx.conf            # Nginx configuration
-│       └── .dockerignore         # Docker exclude patterns
-├── docker-compose.yml             # Compose orchestration
-└── README.md                      # This file
+│       │           ├── templates/ # CRUD plantillas
+│       │           ├── resources/ # Seleccionar recursos
+│       │           └── tickets/   # Ver tickets
+│       ├── package.json           # Dependencias NPM
+│       ├── angular.json           # Configuración CLI
+│       ├── tsconfig.json          # Configuración TypeScript
+│       ├── Dockerfile            # Imagen multietapa
+│       ├── nginx.conf            # Configuración Nginx
+│       └── .dockerignore         # Patrones a ignorar
+├── docker-compose.yml             # Orquestación 3 servicios
+└── README.md                      # Esta documentación
 ```
 
-## Local Development
+---
 
-### Prerequisites
+## 🚀 Inicio Rápido (Docker - Recomendado)
 
-- Python 3.10+
-- Node.js 18+
-- PostgreSQL 12+ (or use Docker)
+**Prerrequisitos:**
+- Docker Desktop instalado ([descargar](https://www.docker.com/products/docker-desktop))
+- Git instalado
 
-### Backend Setup
+### Paso 1: Clonar el repositorio
 
-1. Create Python virtual environment:
-   ```bash
-   cd app/backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+```bash
+git clone <repository-url>
+cd ambientacion-2
+```
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Configure database connection in `.env`:
-   ```
-   DATABASE_URL=postgresql://user:password@localhost:5432/ambientacion2
-   CORS_ORIGINS=http://localhost:3000
-   ```
-
-4. PostgreSQL Setup (if local):
-   ```sql
-   CREATE DATABASE ambientacion2;
-   CREATE USER admin WITH PASSWORD 'password';
-   GRANT ALL PRIVILEGES ON DATABASE ambientacion2 TO admin;
-   ```
-
-5. Run backend server:
-   ```bash
-   python -m uvicorn server:app --reload --port 8001
-   ```
-   Server will be available at `http://localhost:8001`
-
-### Frontend Setup
-
-1. Install dependencies:
-   ```bash
-   cd app/frontend
-   npm install
-   ```
-
-2. Start development server:
-   ```bash
-   npm start
-   ```
-   Frontend will be available at `http://localhost:4200`
-
-## API Endpoints
-
-All endpoints return JSON. Base URL: `http://localhost:8001/api`
-
-### Templates
-- `GET /api/templates` - List all templates
-- `POST /api/templates` - Create new template
-- `PUT /api/templates/{id}` - Update template
-- `DELETE /api/templates/{id}` - Delete template
-
-### Resources
-- `GET /api/resources` - Get available GCP and Azure resources
-
-### Tickets
-- `POST /api/tickets/generate` - Generate ticket from selected resources
-- `GET /api/tickets` - List all generated tickets
-- `GET /api/tickets/{id}` - Get ticket details
-
-## Docker Deployment
-
-### Build and Run
+### Paso 2: Iniciar con Docker Compose
 
 ```bash
 docker-compose up --build
 ```
 
-This will start:
-- **PostgreSQL**: Port 5432
-- **Backend**: Port 8001
-- **Frontend**: Port 3000
-
-Access the app at `http://localhost:3000`
-
-### Services
-
-Services communicate via Docker network:
-- Frontend at `http://frontend:3000`
-- Backend at `http://backend:8001`
-- Database connection string: `postgresql://admin:password@postgres:5432/ambientacion2`
-
-### Environment Variables (docker-compose)
-
-Edit `docker-compose.yml` to change:
-- `POSTGRES_DB`: Database name (default: `ambientacion2`)
-- `POSTGRES_USER`: Database user (default: `admin`)
-- `POSTGRES_PASSWORD`: Database password (default: `password`)
-- `DATABASE_URL`: Connection string in backend service
-- `CORS_ORIGINS`: Allowed origins for backend CORS
-
-## Database Models
-
-### Template
+Espera a que compile (3-5 minutos en primera ejecución). Una vez listo, deberías ver:
 
 ```
-id (String, Primary Key)
-name (String)
-provider (String)         # "GCP" or "AZURE"
-resource_type (String)    # Normalized to uppercase
-content (String)
-created_at (DateTime)
+ambientacion2-backend  | INFO:     Uvicorn running on http://0.0.0.0:8001
+ambientacion2-postgres | database system is ready to accept connections
+ambientacion2-frontend | Configuration complete; ready for start up
 ```
 
-### Ticket
+### Paso 3: Acceder a la aplicación
 
+Abre en tu navegador:
+- **Interfaz**: http://localhost:3000
+- **API**: http://localhost:8001/api
+
+### Paso 4: Detener
+
+```bash
+docker-compose down
 ```
-id (String, Primary Key)
-resources (String)        # JSON array of selected resources
-consolidated_content (String)  # Combined template content
-created_at (DateTime)
+
+Para resetear la base de datos (eliminar todos los datos):
+
+```bash
+docker-compose down -v
 ```
 
-## GCP Resources
+---
 
-- **Compute Engine**: Virtual Machines
-- **GKE**: Kubernetes Engine
-- **GAR**: Artifact Registry
-- **Cloud Storage**: Storage buckets
-- **Cloud SQL**: SQL database service
+## 💻 Instalación Local (Desarrollo)
 
-## Azure Resources
+Si prefieres trabajar sin Docker:
 
-- **Virtual Machines**: Compute instances
-- **AKS**: Kubernetes Service
-- **ACR**: Container Registry
-- **Blob Storage**: Object storage
-- **Azure SQL**: Database service
+### Requisitos Previos
 
-## Troubleshooting
+**Windows/Mac/Linux:**
+- Python 3.10 o superior: [python.org](https://www.python.org/downloads/)
+- Node.js 18+ (incluye npm): [nodejs.org](https://nodejs.org)
+- PostgreSQL 15: [postgresql.org](https://www.postgresql.org/download/)
+- Git
 
-### PostgreSQL Connection Error
-- Check `DATABASE_URL` in `.env` has correct host, port, credentials
-- Ensure PostgreSQL service is running and database exists
-- Use `psql` to verify connectivity: `psql -U admin -d ambientacion2 -h localhost`
+**Verificar instalaciones:**
 
-### Frontend Can't Reach Backend
-- Verify backend is running on port 8001
-- Check `CORS_ORIGINS` in backend `.env` matches frontend origin
-- Browser console shows CORS error if headers mismatch
+```bash
+python --version     # Debe ser 3.10+
+node --version       # Debe ser 18+
+npm --version        # Debe ser 8+
+psql --version       # Debe ser PostgreSQL 15
+```
 
-### Angular Build Fails
-- Delete `node_modules` and `dist/` folders
-- Run `npm install` and `npm install --with-peer-deps` if peer warnings appear
-- Verify Node.js version with `node --version`
+### Paso 1: Configurar Base de Datos
 
-### Docker Build Issues
-- Ensure Docker daemon is running
-- Check `docker-compose.yml` for correct paths relative to workspace root
-- Verify sufficient disk space for image layers
+Abre **pgAdmin** o línea de comandos psql:
 
-## Development Tips
+```sql
+CREATE DATABASE ambientacion2;
+CREATE USER admin WITH PASSWORD 'password';
+ALTER ROLE admin SET client_encoding TO 'utf8';
+ALTER ROLE admin SET default_transaction_isolation TO 'read committed';
+ALTER ROLE admin SET default_transaction_deferrable TO on;
+ALTER ROLE admin SET timezone TO 'UTC';
+GRANT ALL PRIVILEGES ON DATABASE ambientacion2 TO admin;
+\c ambientacion2
+GRANT ALL ON SCHEMA public TO admin;
+```
 
-- Backend auto-reloads on file changes (when run with `--reload`)
-- Frontend hot-reloads via Angular dev server
-- Database is persisted in named volume `postgres_data` (docker-compose)
-- Delete `postgres_data` volume to reset database: `docker volume rm ambientacion-2_postgres_data`
+O desde línea de comandos bash:
 
-## Production Deployment
+```bash
+psql -U postgres -c "CREATE DATABASE ambientacion2;"
+psql -U postgres -c "CREATE USER admin WITH PASSWORD 'password';"
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE ambientacion2 TO admin;"
+```
 
-For production:
-1. Set `CORS_ORIGINS` to actual frontend domain
-2. Use strong `POSTGRES_PASSWORD`
-3. Enable HTTPS in nginx.conf
-4. Set FastAPI `debug=False`
-5. Use environment-specific `.env` files
-6. Configure PostgreSQL backups and replicas
+### Paso 2: Backend (FastAPI)
 
-## License
+En una terminal:
 
-Proprietary - Softtek
+```bash
+cd app/backend
+
+# Crear entorno virtual
+python -m venv venv
+
+# Activar entorno (elige según tu SO)
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Configurar variables de entorno
+# Editar .env y asegurar:
+# DATABASE_URL=postgresql://admin:password@localhost:5432/ambientacion2
+# CORS_ORIGINS=http://localhost:3000
+
+# Iniciar servidor
+python -m uvicorn server:app --reload --port 8001
+```
+
+Deberías ver:
+```
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started server process [1234]
+```
+
+✅ **Backend listo en:** http://localhost:8001/api/
+
+### Paso 3: Frontend (Angular)
+
+En **otra terminal**:
+
+```bash
+cd app/frontend
+
+# Instalar dependencias
+npm install
+
+# Iniciar servidor de desarrollo
+npm start
+```
+
+Después de compilar (~30 segundos), verás:
+```
+✔ Compiled successfully.
+```
+
+✅ **Frontend listo en:** http://localhost:4200
+
+Navega a http://localhost:4200 en tu navegador. Deberías ver:
+- Sidebar oscuro a la izquierda
+- Botones: **Templates**, **Resources**, **Tickets**
+- Área principal blanca
+
+---
+
+## 📖 Guía de Uso
+
+### 1. Crear una Plantilla
+
+1. Click en pestaña **Templates**
+2. Rellena el formulario:
+   - **Nombre**: "Mi Plantilla GCP"
+   - **Proveedor**: GCP
+   - **Tipo de Recurso**: VM
+   - **Contenido**: "Instrucciones de configuración..."
+3. Click **Create**
+4. Verifica que aparece en la lista
+
+### 2. Generar un Ticket
+
+1. Click en pestaña **Resources**
+2. Selecciona recursos (checkbox):
+   - ☑ Compute Engine (VM)
+   - ☑ Cloud SQL
+3. Click **Generate Ticket**
+4. Se redirige automáticamente a **Tickets**
+5. Verás el ticket generado con contenido consolidado
+
+### 3. Ver Tickets
+
+1. Click en pestaña **Tickets**
+2. Click en ticket para expandir
+3. Click **Copy Content** para copiar al portapapeles
+
+---
+
+## 🔌 API REST Endpoints
+
+**Base URL Local:** `http://localhost:8001/api`  
+**Base URL Docker:** `http://backend:8001/api`
+
+### Plantillas
+
+```bash
+# Listar todas
+GET /api/templates
+
+# Crear nueva
+POST /api/templates
+Content-Type: application/json
+{
+  "name": "Template 1",
+  "provider": "GCP",
+  "resource_type": "VM",
+  "content": "Content here"
+}
+
+# Actualizar
+PUT /api/templates/{id}
+
+# Eliminar
+DELETE /api/templates/{id}
+```
+
+### Recursos
+
+```bash
+# Listar recursos disponibles
+GET /api/resources
+# Respuesta:
+[
+  {"id": "gcp-vm", "name": "Compute Engine (VM)", "provider": "GCP"},
+  {"id": "azure-vm", "name": "Virtual Machines", "provider": "Azure"},
+  ...
+]
+```
+
+### Tickets
+
+```bash
+# Generar ticket
+POST /api/tickets/generate
+Content-Type: application/json
+{
+  "resource_ids": ["gcp-vm", "gcp-sql"]
+}
+
+# Listar todos
+GET /api/tickets
+
+# Obtener detalle
+GET /api/tickets/{id}
+```
+
+---
+
+## 🗄 Modelos de Base de Datos
+
+### Tabla: templates
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUID | Clave primaria |
+| name | String | Nombre de la plantilla |
+| provider | String | "GCP" \| "AZURE" |
+| resource_type | String | "VM", "STORAGE", "SQL", etc. |
+| content | Text | Contenido de la plantilla |
+| created_at | DateTime | Timestamp UTC |
+
+### Tabla: tickets
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | UUID | Clave primaria |
+| resources_json | String | JSON array de recursos seleccionados |
+| consolidated_content | Text | Contenido combinado de plantillas |
+| created_at | DateTime | Timestamp UTC |
+
+---
+
+## 📊 Recursos Cloud Disponibles
+
+### GCP
+
+- **Compute Engine (VM)** - Máquinas virtuales
+- **Google Kubernetes Engine (GKE)** - Kubernetes administrado
+- **Artifact Registry (AR)** - Registro de artefactos
+- **Cloud Storage** - Almacenamiento de objetos
+- **Cloud SQL** - Base de datos SQL administrada
+
+### Azure
+
+- **Virtual Machines** - Máquinas virtuales
+- **Azure Kubernetes Service (AKS)** - Kubernetes administrado
+- **Container Registry (ACR)** - Registro de contenedores
+- **Blob Storage** - Almacenamiento de objetos
+- **Azure SQL Database** - Base de datos SQL administrado
+
+---
+
+## 🔧 Solución de Problemas
+
+### ❌ Error: `docker-compose: command not found`
+
+**Solución:** Instala el plugin Docker Compose v2
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install docker-compose-plugin
+
+# Mac (con Homebrew)
+brew install docker-compose
+
+# Verifica
+docker compose version
+```
+
+Luego usa `docker compose` (con espacio) en lugar de `docker-compose` (con guión).
+
+---
+
+### ❌ Error: `database "admin" does not exist`
+
+**Causa:** PostgreSQL intenta conectarse a base de datos que no existe.
+
+**Solución:**
+
+```bash
+# Si usas Docker, está automatizado. Si es local:
+psql -U postgres
+
+# Dentro de psql:
+CREATE DATABASE ambientacion2 OWNER admin;
+\l  # Verifica que exista
+```
+
+---
+
+### ❌ Error: "Error al cargar recursos" en la web
+
+**Causa:** Frontend no puede contactar al backend API.
+
+**Verificación:**
+
+```bash
+# 1. Backend corriendo
+curl http://localhost:8001/api/
+
+# 2. Si usas Docker, verifica red
+docker network ls
+docker inspect ambientacion-2_default
+
+# 3. Logs del contenedor
+docker-compose logs -f backend
+```
+
+**Solución:** Reinicia completamente
+
+```bash
+docker-compose down -v  # Incluye volúmenes
+docker-compose up --build
+```
+
+---
+
+### ❌ Error: Compilación Angular lenta o error de memoria
+
+**Solución:**
+
+```bash
+cd app/frontend
+rm -rf node_modules dist .angular
+npm install
+npm run build
+```
+
+---
+
+### ❌ Nota: `KeyError: 'id'` en logs de Docker
+
+**Esto NO es un error en la aplicación.** Es un problema menor del cliente `docker-compose` v1.x antiguo al procesar eventos de Docker.
+
+**Solución:** Usa `docker compose` v2 como se describe arriba.
+
+---
+
+## 💡 Consejos de Desarrollo
+
+### Cambios en Tiempo Real
+
+**Backend:**
+- FastAPI auto-recarga cuando editas `server.py`
+- No necesitas reiniciar
+
+**Frontend:**
+- Angular dev server recarga automáticamente
+- Abre http://localhost:4200 para ver cambios al instante
+
+### Limpiar Base de Datos
+
+```bash
+# Con Docker
+docker-compose down -v  # Elimina volumen postgres_data
+
+# Local
+# Dentro de psql:
+DROP DATABASE ambientacion2;
+CREATE DATABASE ambientacion2 OWNER admin;
+```
+
+### Ver Base de Datos
+
+**Con Docker:**
+
+```bash
+docker-compose exec postgres psql -U admin -d ambientacion2
+
+# Dentro:
+\dt              # Lista tablas
+SELECT * FROM templates;
+SELECT * FROM tickets;
+\q               # Salir
+```
+
+**Local:**
+
+```bash
+psql -U admin -d ambientacion2 -h localhost
+```
+
+### Resetear Todo
+
+```bash
+# Docker
+docker-compose down -v --remove-orphans
+docker system prune -f
+docker-compose up --build
+
+# Local
+deactivate  # Si estás en venv
+# Elimina venv y node_modules
+rm -rf app/backend/venv app/frontend/node_modules app/frontend/dist
+# Reinicia desde Paso 1
+```
+
+---
+
+## 📝 Variables de Entorno
+
+### Backend (.env)
+
+```bash
+# Conexión a PostgreSQL
+DATABASE_URL=postgresql://admin:password@localhost:5432/ambientacion2
+
+# CORS (quién puede acceder a la API)
+CORS_ORIGINS=http://localhost:3000
+
+# Para Docker
+DATABASE_URL=postgresql://admin:password@postgres:5432/ambientacion2
+CORS_ORIGINS=http://frontend:3000
+```
+
+### Frontend
+
+No requiere `.env` — se conecta automáticamente via `/api` (proxy nginx en Docker)
+
+---
+
+## 🐳 Docker Compose Servicios
+
+| Servicio | Puerto | URL |
+|----------|--------|-----|
+| **postgres** | 5432 | localhost:5432 |
+| **backend** | 8001 | http://localhost:8001/api |
+| **frontend** | 3000 | http://localhost:3000 |
+
+Dentro de la red Docker, usa nombres en lugar de localhost:
+- `http://postgres:5432`
+- `http://backend:8001`
+- `http://frontend:3000`
+
+---
+
+## 📦 Dependencias Principales
+
+**Backend:**
+- FastAPI: Framework web
+- SQLAlchemy: ORM para base de datos
+- psycopg2: Driver PostgreSQL
+- python-dotenv: Variables de entorno
+
+**Frontend:**
+- Angular: Framework web
+- RxJS: Programación reactiva
+- Zone.js: Soporte async/await
+- Typescript: Tipado estático
+
+---
+
+## 🔐 Notas de Seguridad
+
+**Desarrollo:** Configuración por defecto es segura para localhost.
+
+**Producción:**
+
+1. **Cambiar credenciales por defecto:**
+   ```bash
+   POSTGRES_USER=<usuario-seguro>
+   POSTGRES_PASSWORD=<contraseña-fuerte-32-caracteres>
+   ```
+
+2. **CORS restrictivos:**
+   ```bash
+   CORS_ORIGINS=https://tudominio.com
+   ```
+
+3. **HTTPS obligatorio:**
+   - Configura certificados SSL en nginx.conf
+   - Redirige HTTP → HTTPS
+
+4. **Backup de base de datos:**
+   ```bash
+   pg_dump -U admin -d ambientacion2 > backup.sql
+   ```
+
+---
+
+## 📚 Recursos Adicionales
+
+- [FastAPI Docs](https://fastapi.tiangolo.com/)
+- [Angular Docs](https://angular.io/docs)
+- [PostgreSQL Docs](https://www.postgresql.org/docs/)
+- [Docker Compose Docs](https://docs.docker.com/compose/)
+
+---
+
+## 📄 Licencia
+
+Propietario - Softtek
+
+---
+
+## ✅ Checklist Inicial
+
+Después de instalar, verifica:
+
+- [ ] `http://localhost:3000` muestra la interfaz Angular
+- [ ] Puedes crear una plantilla en "Templates"  
+- [ ] Puedes seleccionar recursos en "Resources"
+- [ ] Puedes generar un ticket
+- [ ] El ticket aparece en "Tickets"
+- [ ] `curl http://localhost:8001/api/` retorna JSON
+
+¿Problemas? Abre un issue o contacta al equipo de desarrollo.
