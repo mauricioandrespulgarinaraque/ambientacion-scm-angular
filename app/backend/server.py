@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, DateTime, Integer
 from sqlalchemy.ext.declarative import declarative_base
@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # PostgreSQL connection
-DATABASE_URL = os.environ['DATABASE_URL']
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://admin:password@localhost:5432/ambientacion2')
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -125,9 +125,7 @@ async def root():
 
 # Templates
 @app.post("/api/templates", response_model=Template)
-async def create_template(input: TemplateCreate, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def create_template(input: TemplateCreate, db: Session = Depends(get_db)):
     resource_type = input.resource_type.upper()
     template = TemplateORM(
         name=input.name,
@@ -138,34 +136,24 @@ async def create_template(input: TemplateCreate, db: Session = None):
     db.add(template)
     db.commit()
     db.refresh(template)
-    db.close()
     return template
 
 @app.get("/api/templates", response_model=List[Template])
-async def get_templates(db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def get_templates(db: Session = Depends(get_db)):
     templates = db.query(TemplateORM).all()
-    db.close()
     return templates
 
 @app.get("/api/templates/{template_id}", response_model=Template)
-async def get_template(template_id: str, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def get_template(template_id: str, db: Session = Depends(get_db)):
     template = db.query(TemplateORM).filter(TemplateORM.id == template_id).first()
-    db.close()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     return template
 
 @app.put("/api/templates/{template_id}", response_model=Template)
-async def update_template(template_id: str, input: TemplateUpdate, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def update_template(template_id: str, input: TemplateUpdate, db: Session = Depends(get_db)):
     template = db.query(TemplateORM).filter(TemplateORM.id == template_id).first()
     if not template:
-        db.close()
         raise HTTPException(status_code=404, detail="Template not found")
     
     if input.name is not None:
@@ -179,20 +167,15 @@ async def update_template(template_id: str, input: TemplateUpdate, db: Session =
     
     db.commit()
     db.refresh(template)
-    db.close()
     return template
 
 @app.delete("/api/templates/{template_id}")
-async def delete_template(template_id: str, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def delete_template(template_id: str, db: Session = Depends(get_db)):
     template = db.query(TemplateORM).filter(TemplateORM.id == template_id).first()
     if not template:
-        db.close()
         raise HTTPException(status_code=404, detail="Template not found")
     db.delete(template)
     db.commit()
-    db.close()
     return {"message": "Template deleted successfully"}
 
 # Resources
@@ -202,16 +185,12 @@ async def get_resources():
 
 # Tickets
 @app.post("/api/tickets/generate")
-async def generate_ticket(input: TicketCreate, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def generate_ticket(input: TicketCreate, db: Session = Depends(get_db)):
     if not input.resource_ids:
-        db.close()
         raise HTTPException(status_code=400, detail="No resources selected")
     
     selected_resources = [r for r in PREDEFINED_RESOURCES if r["id"] in input.resource_ids]
     if not selected_resources:
-        db.close()
         raise HTTPException(status_code=400, detail="Invalid resource IDs")
     
     consolidated_content = ""
@@ -239,24 +218,17 @@ async def generate_ticket(input: TicketCreate, db: Session = None):
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
-    db.close()
     
     return {"id": ticket.id, "consolidated_content": ticket.consolidated_content, "created_at": ticket.created_at}
 
 @app.get("/api/tickets")
-async def get_tickets(db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def get_tickets(db: Session = Depends(get_db)):
     tickets = db.query(TicketORM).order_by(TicketORM.created_at.desc()).all()
-    db.close()
     return [{"id": t.id, "consolidated_content": t.consolidated_content, "created_at": t.created_at} for t in tickets]
 
 @app.get("/api/tickets/{ticket_id}")
-async def get_ticket(ticket_id: str, db: Session = None):
-    if db is None:
-        db = SessionLocal()
+async def get_ticket(ticket_id: str, db: Session = Depends(get_db)):
     ticket = db.query(TicketORM).filter(TicketORM.id == ticket_id).first()
-    db.close()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return {"id": ticket.id, "consolidated_content": ticket.consolidated_content, "created_at": ticket.created_at}
