@@ -12,7 +12,7 @@ RUN npm run build
 # Serve stage
 FROM nginx:alpine
 
-COPY --from=builder /app/dist/ambientacion-2 /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 COPY nginx.conf /etc/nginx/nginx.conf
 
