@@ -1,0 +1,15 @@
+<div class="app-container">
+  <nav class="sidebar">
+    <div class="logo">
+      <h2>{{ title }}</h2>
+    </div>
+    <ul class="nav-menu">
+      <li><a [routerLink]="['/templates']" routerLinkActive="active">Plantillas</a></li>
+      <li><a [routerLink]="['/resources']" routerLinkActive="active">Recursos</a></li>
+      <li><a [routerLink]="['/tickets']" routerLinkActive="active">Tickets</a></li>
+    </ul>
+  </nav>
+  <main class="content">
+    <router-outlet></router-outlet>
+  </main>
+</div>

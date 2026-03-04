@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.angular
+.vscode
+.idea
+.DS_Store
+.git
+.gitignore
+.env
+*.log
+npm-debug.log
+yarn-error.log

@@ -1,0 +1,53 @@
+<div class="container">
+  <div class="header">
+    <h1>Seleccionar Recursos</h1>
+    <p>Selecciona los recursos cloud para generar un ticket consolidado</p>
+  </div>
+
+  <div *ngIf="message" [ngClass]="messageType">{{ message }}</div>
+
+  <div *ngIf="loading" class="card">Cargando recursos...</div>
+
+  <div *ngIf="!loading">
+    <div class="section">
+      <h2>Google Cloud Platform</h2>
+      <div class="resources-list">
+        <div *ngFor="let resource of gcpResources" class="resource-card" (click)="toggleResource(resource.id)">
+          <input type="checkbox" [checked]="isSelected(resource.id)" (click)="$event.stopPropagation()">
+          <div class="resource-info">
+            <h3>{{ resource.name }}</h3>
+            <p>ID: {{ resource.id }}</p>
+            <div *ngIf="getTemplateForResource(resource)" class="template-preview">
+              <span class="badge-template">Plantilla</span>
+              <p>{{ getTemplateForResource(resource).content.substring(0, 150) }}...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Microsoft Azure</h2>
+      <div class="resources-list">
+        <div *ngFor="let resource of azureResources" class="resource-card" (click)="toggleResource(resource.id)">
+          <input type="checkbox" [checked]="isSelected(resource.id)" (click)="$event.stopPropagation()">
+          <div class="resource-info">
+            <h3>{{ resource.name }}</h3>
+            <p>ID: {{ resource.id }}</p>
+            <div *ngIf="getTemplateForResource(resource)" class="template-preview">
+              <span class="badge-template">Plantilla</span>
+              <p>{{ getTemplateForResource(resource).content.substring(0, 150) }}...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="selectedResources.length > 0" class="generate-section">
+      <p>{{ selectedResources.length }} recurso(s) seleccionado(s)</p>
+      <button (click)="handleGenerateTicket()" [disabled]="generating">
+        {{ generating ? 'Generando...' : 'Generar Ticket' }}
+      </button>
+    </div>
+  </div>
+</div>

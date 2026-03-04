@@ -1,0 +1,59 @@
+<div class="container">
+  <div class="header">
+    <h1>Plantillas</h1>
+    <p>Gestiona las plantillas de recursos cloud</p>
+    <button *ngIf="!isCreating && !editingId" (click)="handleCreate()">Nueva Plantilla</button>
+  </div>
+
+  <div *ngIf="message" [ngClass]="messageType">{{ message }}</div>
+
+  <div *ngIf="isCreating || editingId" class="card form-card">
+    <h2>{{ editingId ? 'Editar' : 'Nueva' }} Plantilla</h2>
+    <div class="form-group">
+      <label>Nombre</label>
+      <input type="text" [(ngModel)]="formData.name" placeholder="Ej: Permisos VM GCP">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Proveedor</label>
+        <select [(ngModel)]="formData.provider" (change)="onProviderChange(formData.provider)">
+          <option value="GCP">GCP</option>
+          <option value="Azure">Azure</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de Recurso</label>
+        <select [(ngModel)]="formData.resource_type">
+          <option *ngFor="let type of currentResourceTypes" [value]="type">{{ type }}</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Contenido</label>
+      <textarea [(ngModel)]="formData.content" placeholder="Describe los permisos, configuraciones o requisitos..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button (click)="handleSave()">Guardar</button>
+      <button (click)="handleCancel()" [style.background-color]="'#999'">Cancelar</button>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="card">Cargando...</div>
+
+  <div *ngIf="!loading && templates.length === 0" class="card">No hay plantillas creadas</div>
+
+  <div *ngFor="let template of templates" class="card template-card">
+    <div class="card-header">
+      <div>
+        <h3>{{ template.name }}</h3>
+        <span class="badge">{{ template.provider }}</span>
+        <span class="badge">{{ template.resource_type }}</span>
+      </div>
+      <div class="card-actions">
+        <button (click)="handleEdit(template)" [style.background-color]="'#2196F3'">Editar</button>
+        <button (click)="handleDelete(template.id)" [style.background-color]="'#f44336'">Eliminar</button>
+      </div>
+    </div>
+    <p class="template-content">{{ template.content.substring(0, 200) }}...</p>
+  </div>
+</div>

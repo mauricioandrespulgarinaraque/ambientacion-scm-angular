@@ -1,0 +1,53 @@
+<div class="container">
+  <div class="header">
+    <h1>Tickets</h1>
+    <p>View and manage generated tickets</p>
+  </div>
+
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+
+  <div *ngIf="copiedMessage" class="success">
+    {{ copiedMessage }}
+  </div>
+
+  <div class="controls">
+    <button (click)="handleRefresh()" [disabled]="loading">
+      {{ loading ? 'Loading...' : 'Refresh' }}
+    </button>
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    Loading tickets...
+  </div>
+
+  <div *ngIf="!loading && tickets.length === 0" class="empty">
+    <p>No tickets generated yet. Go to <a href="/resources">Resources</a> to generate a ticket.</p>
+  </div>
+
+  <div *ngIf="!loading && tickets.length > 0" class="tickets-list">
+    <div *ngFor="let ticket of tickets" class="ticket-card">
+      <div class="ticket-header" (click)="toggleTicketDetail(ticket.id)">
+        <div class="ticket-info">
+          <h3>{{ getResourceSummary(ticket) }}</h3>
+          <p class="ticket-date">{{ formatDate(ticket.created_at) }}</p>
+        </div>
+        <div class="ticket-action">
+          {{ selectedTicketId === ticket.id ? '▼' : '▶' }}
+        </div>
+      </div>
+
+      <div *ngIf="selectedTicketId === ticket.id" class="ticket-detail">
+        <div class="content-preview">
+          {{ ticket.consolidated_content }}
+        </div>
+        <div class="ticket-actions">
+          <button (click)="copyToClipboard(ticket.consolidated_content)">
+            Copy Content
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
