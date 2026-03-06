@@ -1,0 +1,341 @@
+# Kubernetes CI/CD Pipeline - Azure DevOps
+
+trigger:
+  branches:
+    include:
+    - main-k8s
+    - develop-k8s
+  paths:
+    include:
+    - app/backend/**
+    - app/frontend/**
+    - deployments/kubernetes/**
+    - azure-pipelines/kubernetes-pipeline.yml
+    exclude:
+    - README.md
+    - deployments/cloudrun/**
+
+pr:
+  branches:
+    include:
+    - main-k8s
+    - develop-k8s
+
+variables:
+  GCP_PROJECT_ID: '$(GCP_PROJECT_ID)'
+  GKE_CLUSTER: 'ambientacion2-cluster'
+  GKE_REGION: 'us-central1'
+  GKE_ZONE: 'us-central1-a'
+  DOCKER_REGISTRY: 'gcr.io'
+  SERVICE_BACKEND: 'ambientacion2-backend'
+  SERVICE_FRONTEND: 'ambientacion2-frontend'
+  NAMESPACE: 'ambientacion2'
+  buildConfiguration: 'Release'
+
+stages:
+  - stage: Build
+    displayName: 'Build and Push Images'
+    jobs:
+      - job: BuildImages
+        displayName: 'Build Docker Images'
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.10'
+            displayName: 'Use Python 3.10'
+
+          - task: UseNode@1
+            inputs:
+              version: '18.x'
+            displayName: 'Use Node.js 18'
+
+          - task: Docker@2
+            displayName: 'Build Backend Image'
+            inputs:
+              command: 'build'
+              Dockerfile: 'app/backend/Dockerfile'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):latest
+              arguments: '--memory 2gb'
+
+          - task: Docker@2
+            displayName: 'Build Frontend Image'
+            inputs:
+              command: 'build'
+              Dockerfile: 'app/frontend/Dockerfile'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):latest
+
+          - task: GoogleCloudServiceConnection@1
+            displayName: 'Authenticate to GCP'
+            inputs:
+              connectionName: 'gcp-connection'
+              projectName: '$(GCP_PROJECT_ID)'
+
+          - task: Docker@2
+            displayName: 'Push Backend Image'
+            inputs:
+              command: 'push'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):latest
+
+          - task: Docker@2
+            displayName: 'Push Frontend Image'
+            inputs:
+              command: 'push'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):latest
+
+          - script: |
+              # Update manifests with new image tags
+              sed -i 's|gcr.io/YOUR_PROJECT_ID/$(SERVICE_BACKEND):latest|$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId)|g' \
+                deployments/kubernetes/manifests/backend/deployment.yaml
+              sed -i 's|gcr.io/YOUR_PROJECT_ID/$(SERVICE_FRONTEND):latest|$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId)|g' \
+                deployments/kubernetes/manifests/frontend/deployment.yaml
+            displayName: 'Update Kubernetes Manifests'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish K8s Manifests'
+            inputs:
+              pathToPublish: 'deployments/kubernetes/manifests'
+              artifactName: 'k8s-manifests'
+
+  - stage: DeployDev
+    displayName: 'Deploy to GKE (Dev)'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/develop-k8s')
+    dependsOn: Build
+    jobs:
+      - deployment: DeployK8sDev
+        displayName: 'Deploy to GKE Dev'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'gke-dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: GoogleCloudServiceConnection@1
+                  inputs:
+                    connectionName: 'gcp-connection'
+                    projectName: '$(GCP_PROJECT_ID)'
+
+                - script: |
+                    gcloud services enable container.googleapis.com \
+                      artifactregistry.googleapis.com \
+                      cloudbuild.googleapis.com \
+                      compute.googleapis.com \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Enable GCP APIs'
+
+                - script: |
+                    # Get cluster credentials
+                    gcloud container clusters get-credentials $(GKE_CLUSTER) \
+                      --zone=$(GKE_ZONE) \
+                      --project=$(GCP_PROJECT_ID)
+                    
+                    # Verify connection
+                    kubectl cluster-info
+                  displayName: 'Get Cluster Credentials'
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Namespace'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-dev'
+                    namespace: 'default'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/namespace.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Secrets and ConfigMaps'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-dev'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/secret.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy PostgreSQL'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-dev'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/postgres/statefulset.yaml
+
+                - script: |
+                    kubectl wait --for=condition=ready pod \
+                      -l app=postgres \
+                      -n $(NAMESPACE) \
+                      --timeout=300s || true
+                  displayName: 'Wait for PostgreSQL Ready'
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Backend'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-dev'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/backend/deployment.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Frontend'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-dev'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/frontend/deployment.yaml
+
+                - script: |
+                    kubectl rollout status deployment/backend -n $(NAMESPACE) --timeout=300s || true
+                    kubectl rollout status deployment/frontend -n $(NAMESPACE) --timeout=300s || true
+                  displayName: 'Wait for Deployments Ready'
+
+  - stage: DeployProd
+    displayName: 'Deploy to GKE (Prod)'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main-k8s')
+    dependsOn: Build
+    jobs:
+      - deployment: DeployK8sProd
+        displayName: 'Deploy to GKE Prod'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'gke-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: GoogleCloudServiceConnection@1
+                  inputs:
+                    connectionName: 'gcp-connection'
+                    projectName: '$(GCP_PROJECT_ID)'
+
+                - script: |
+                    gcloud services enable container.googleapis.com \
+                      artifactregistry.googleapis.com \
+                      cloudbuild.googleapis.com \
+                      compute.googleapis.com \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Enable GCP APIs'
+
+                - script: |
+                    gcloud container clusters get-credentials $(GKE_CLUSTER) \
+                      --zone=$(GKE_ZONE) \
+                      --project=$(GCP_PROJECT_ID)
+                    
+                    kubectl cluster-info
+                  displayName: 'Get Cluster Credentials'
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Namespace'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-prod'
+                    namespace: 'default'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/namespace.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Secrets and ConfigMaps'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-prod'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/secret.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy PostgreSQL'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-prod'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/postgres/statefulset.yaml
+
+                - script: |
+                    kubectl wait --for=condition=ready pod \
+                      -l app=postgres \
+                      -n $(NAMESPACE) \
+                      --timeout=300s || true
+                  displayName: 'Wait for PostgreSQL Ready'
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Backend'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-prod'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/backend/deployment.yaml
+
+                - task: KubernetesManifest@0
+                  displayName: 'Deploy Frontend'
+                  inputs:
+                    action: 'deploy'
+                    kubernetesServiceConnection: 'gke-prod'
+                    namespace: '$(NAMESPACE)'
+                    manifests: |
+                      $(Pipeline.Workspace)/k8s-manifests/frontend/deployment.yaml
+
+                - script: |
+                    kubectl rollout status deployment/backend -n $(NAMESPACE) --timeout=300s || true
+                    kubectl rollout status deployment/frontend -n $(NAMESPACE) --timeout=300s || true
+                  displayName: 'Wait for Deployments Ready'
+
+  - stage: Testing
+    displayName: 'Health Checks and Testing'
+    dependsOn:
+      - DeployDev
+      - DeployProd
+    condition: succeeded()
+    jobs:
+      - job: HealthCheck
+        displayName: 'Health Check'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: GoogleCloudServiceConnection@1
+            inputs:
+              connectionName: 'gcp-connection'
+              projectName: '$(GCP_PROJECT_ID)'
+
+          - script: |
+              gcloud container clusters get-credentials $(GKE_CLUSTER) \
+                --zone=$(GKE_ZONE) \
+                --project=$(GCP_PROJECT_ID)
+            displayName: 'Get Credentials'
+
+          - script: |
+              echo "Checking Pod Status..."
+              kubectl get pods -n $(NAMESPACE)
+              
+              echo "Checking Service Status..."
+              kubectl get svc -n $(NAMESPACE)
+              
+              echo "Checking Resource Usage..."
+              kubectl top nodes || true
+              kubectl top pods -n $(NAMESPACE) || true
+            displayName: 'Cluster Status Verification'
+
+          - script: |
+              echo "Checking Backend Service..."
+              kubectl get endpoints backend -n $(NAMESPACE)
+              
+              echo "Checking Frontend Service..."
+              kubectl get endpoints frontend-service -n $(NAMESPACE)
+              
+              echo "Checking PostgreSQL Status..."
+              kubectl get pvc -n $(NAMESPACE)
+              kubectl get pv || true
+            displayName: 'Service Verification'

@@ -1,0 +1,290 @@
+# Cloud Run CI/CD Pipeline - Azure DevOps
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - app/backend/**
+    - app/frontend/**
+    - deployments/cloudrun/**
+    - azure-pipelines/cloudrun-pipeline.yml
+    exclude:
+    - README.md
+    - deployments/kubernetes/**
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+
+variables:
+  GCP_PROJECT_ID: '$(GCP_PROJECT_ID)'
+  GCP_REGION: 'us-central1'
+  DOCKER_REGISTRY: 'gcr.io'
+  SERVICE_BACKEND: 'ambientacion2-backend'
+  SERVICE_FRONTEND: 'ambientacion2-frontend'
+  buildConfiguration: 'Release'
+
+stages:
+  - stage: Build
+    displayName: 'Build and Push Images'
+    jobs:
+      - job: BuildImages
+        displayName: 'Build Docker Images'
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.10'
+            displayName: 'Use Python 3.10'
+
+          - task: UseNode@1
+            inputs:
+              version: '18.x'
+            displayName: 'Use Node.js 18'
+
+          - task: Docker@2
+            displayName: 'Build Backend Image'
+            inputs:
+              command: 'build'
+              Dockerfile: 'app/backend/Dockerfile'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):latest
+              arguments: '--memory 2gb'
+
+          - task: Docker@2
+            displayName: 'Build Frontend Image'
+            inputs:
+              command: 'build'
+              Dockerfile: 'app/frontend/Dockerfile'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):latest
+
+          - task: GoogleCloudServiceConnection@1
+            displayName: 'Authenticate to GCP'
+            inputs:
+              connectionName: 'gcp-connection'
+              projectName: '$(GCP_PROJECT_ID)'
+
+          - task: Docker@2
+            displayName: 'Push Backend Image'
+            inputs:
+              command: 'push'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):latest
+
+          - task: Docker@2
+            displayName: 'Push Frontend Image'
+            inputs:
+              command: 'push'
+              tags: |
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId)
+                $(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):latest
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifacts'
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'cloudrun-artifacts'
+
+  - stage: DeployDev
+    displayName: 'Deploy to Cloud Run (Dev)'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/develop')
+    dependsOn: Build
+    jobs:
+      - deployment: DeployCloudRunDev
+        displayName: 'Deploy to Cloud Run Dev'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'cloudrun-dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: GoogleCloudServiceConnection@1
+                  inputs:
+                    connectionName: 'gcp-connection'
+                    projectName: '$(GCP_PROJECT_ID)'
+
+                - script: |
+                    gcloud services enable run.googleapis.com \
+                      artifactregistry.googleapis.com \
+                      cloudbuild.googleapis.com \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Enable GCP APIs'
+
+                - script: |
+                    gcloud run deploy $(SERVICE_BACKEND)-dev \
+                      --image=$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId) \
+                      --platform=managed \
+                      --region=$(GCP_REGION) \
+                      --allow-unauthenticated \
+                      --set-env-vars=DATABASE_URL=$(DB_URL_DEV),CORS_ORIGINS=https://* \
+                      --memory=1Gi \
+                      --cpu=2 \
+                      --max-instances=50 \
+                      --min-instances=1 \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Deploy Backend Service'
+                  env:
+                    DB_URL_DEV: $(DATABASE_URL_DEV)
+
+                - script: |
+                    BACKEND_URL=$(gcloud run services describe $(SERVICE_BACKEND)-dev \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    gcloud run deploy $(SERVICE_FRONTEND)-dev \
+                      --image=$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId) \
+                      --platform=managed \
+                      --region=$(GCP_REGION) \
+                      --allow-unauthenticated \
+                      --set-env-vars=BACKEND_URL=$BACKEND_URL \
+                      --memory=512Mi \
+                      --cpu=1 \
+                      --max-instances=30 \
+                      --min-instances=1 \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Deploy Frontend Service'
+
+                - script: |
+                    BACKEND_URL=$(gcloud run services describe $(SERVICE_BACKEND)-dev \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    FRONTEND_URL=$(gcloud run services describe $(SERVICE_FRONTEND)-dev \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    echo "##vso[task.setvariable variable=BACKEND_URL]$BACKEND_URL"
+                    echo "##vso[task.setvariable variable=FRONTEND_URL]$FRONTEND_URL"
+                    
+                    echo "Backend: $BACKEND_URL"
+                    echo "Frontend: $FRONTEND_URL"
+                  displayName: 'Get Service URLs'
+
+  - stage: DeployProd
+    displayName: 'Deploy to Cloud Run (Prod)'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    dependsOn: Build
+    jobs:
+      - deployment: DeployCloudRunProd
+        displayName: 'Deploy to Cloud Run Prod'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'cloudrun-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: GoogleCloudServiceConnection@1
+                  inputs:
+                    connectionName: 'gcp-connection'
+                    projectName: '$(GCP_PROJECT_ID)'
+
+                - script: |
+                    gcloud services enable run.googleapis.com \
+                      artifactregistry.googleapis.com \
+                      cloudbuild.googleapis.com \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Enable GCP APIs'
+
+                - script: |
+                    gcloud run deploy $(SERVICE_BACKEND) \
+                      --image=$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_BACKEND):$(Build.BuildId) \
+                      --platform=managed \
+                      --region=$(GCP_REGION) \
+                      --allow-unauthenticated \
+                      --set-env-vars=DATABASE_URL=$(DB_URL_PROD),CORS_ORIGINS=https://* \
+                      --memory=2Gi \
+                      --cpu=4 \
+                      --max-instances=100 \
+                      --min-instances=2 \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Deploy Backend Service (Prod)'
+                  env:
+                    DB_URL_PROD: $(DATABASE_URL_PROD)
+
+                - script: |
+                    BACKEND_URL=$(gcloud run services describe $(SERVICE_BACKEND) \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    gcloud run deploy $(SERVICE_FRONTEND) \
+                      --image=$(DOCKER_REGISTRY)/$(GCP_PROJECT_ID)/$(SERVICE_FRONTEND):$(Build.BuildId) \
+                      --platform=managed \
+                      --region=$(GCP_REGION) \
+                      --allow-unauthenticated \
+                      --set-env-vars=BACKEND_URL=$BACKEND_URL \
+                      --memory=1Gi \
+                      --cpu=2 \
+                      --max-instances=50 \
+                      --min-instances=2 \
+                      --project=$(GCP_PROJECT_ID)
+                  displayName: 'Deploy Frontend Service (Prod)'
+
+                - script: |
+                    BACKEND_URL=$(gcloud run services describe $(SERVICE_BACKEND) \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    FRONTEND_URL=$(gcloud run services describe $(SERVICE_FRONTEND) \
+                      --region=$(GCP_REGION) \
+                      --format='value(status.url)' \
+                      --project=$(GCP_PROJECT_ID))
+                    
+                    echo "##vso[task.setvariable variable=BACKEND_URL_PROD]$BACKEND_URL"
+                    echo "##vso[task.setvariable variable=FRONTEND_URL_PROD]$FRONTEND_URL"
+                  displayName: 'Get Production URLs'
+
+  - stage: Testing
+    displayName: 'Smoke Testing'
+    dependsOn:
+      - DeployDev
+      - DeployProd
+    condition: succeeded()
+    jobs:
+      - job: SmokeTest
+        displayName: 'Run Smoke Tests'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              echo "Testing Cloud Run Services..."
+              
+              # Test Dev Environment (si existe)
+              if [ "$(Build.SourceBranch)" = "refs/heads/develop" ]; then
+                BACKEND_URL_DEV=$(gcloud run services describe $(SERVICE_BACKEND)-dev \
+                  --region=$(GCP_REGION) \
+                  --format='value(status.url)' \
+                  --project=$(GCP_PROJECT_ID))
+                
+                echo "Testing Backend Dev: $BACKEND_URL_DEV"
+                curl -f $BACKEND_URL_DEV/api/templates || exit 1
+              fi
+              
+              # Test Prod Environment (si existe)
+              if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+                BACKEND_URL=$(gcloud run services describe $(SERVICE_BACKEND) \
+                  --region=$(GCP_REGION) \
+                  --format='value(status.url)' \
+                  --project=$(GCP_PROJECT_ID))
+                
+                echo "Testing Backend Prod: $BACKEND_URL"
+                curl -f $BACKEND_URL/api/templates || exit 1
+              fi
+            displayName: 'Run Smoke Tests'
